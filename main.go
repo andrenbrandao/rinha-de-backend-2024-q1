@@ -19,31 +19,15 @@ func seedDB() {
 	}
 	defer conn.Close(context.Background())
 
-	_, err = conn.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS accounts 
-    (id SERIAL NOT NULL,
-    name VARCHAR NOT NULL,
-    balance INTEGER DEFAULT 0 NOT NULL,
-    balance_limit INTEGER DEFAULT 0 NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL)`)
-
+	seedSql, err := os.ReadFile("seed.sql")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to create accounts table: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error while trying to read seed.sql: %v\n", err)
 		os.Exit(1)
 	}
 
-	_, err = conn.Exec(context.Background(), `
-    INSERT INTO accounts
-      (name, balance_limit)
-    VALUES
-      ('John Doe', 1000*100),
-      ('Jane Doe', 800*100),
-      ('Jack Sparrow', 10000*100),
-      ('Bruce Wayne', 100000*100),
-      ('Scarlett Johansson', 5000*100)
-    `)
-
+	_, err = conn.Exec(context.Background(), string(seedSql))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to insert seed data: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Unable to seed database: %v\n", err)
 		os.Exit(1)
 	}
 }

@@ -53,7 +53,10 @@ func TestMain(t *testing.T) {
 		t.Errorf("Unable to connect to test database: %v\n", err)
 	}
 
-	conn.Exec(context.Background(), "DROP TABLE IF EXISTS accounts;")
+	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS accounts;")
+	if err != nil {
+		t.Errorf("Unable to clean accounts table: %v\n", err)
+	}
 	defer conn.Close(context.Background())
 
 	t.Run("seeds the database with 5 accounts", func(t *testing.T) {
