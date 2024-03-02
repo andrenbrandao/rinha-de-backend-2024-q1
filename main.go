@@ -56,21 +56,24 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	reqBody, err := io.ReadAll(r.Body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot read request body: %v\n", err)
-		os.Exit(1)
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 
 	var reqBodyDTO TransactionRequestBody
 	err = json.Unmarshal(reqBody, &reqBodyDTO)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot parse request body: %v\n", err)
-		os.Exit(1)
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 	valor := reqBodyDTO.Valor
 
 	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:5433/test-db")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 	defer conn.Close(context.Background())
 
@@ -78,6 +81,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to update balance: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
