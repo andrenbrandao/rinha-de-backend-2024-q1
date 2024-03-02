@@ -60,6 +60,7 @@ func extratoHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	fmt.Println("Starting up server...")
+	seedDB()
 
 	http.HandleFunc("GET /health", healthHandler)
 	http.HandleFunc("GET /clientes/{id}/extrato", extratoHandler)
