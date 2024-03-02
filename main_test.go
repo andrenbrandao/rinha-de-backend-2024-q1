@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"strconv"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -74,12 +75,8 @@ func TestMain(t *testing.T) {
 
 	t.Run("POST /clientes/{id}/transacoes with credit type should update the balance", func(t *testing.T) {
 		seedDB()
-		jsonStr := []byte(`{"valor": 1000}`)
-		body := bytes.NewBuffer(jsonStr)
-		req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
-		req.SetPathValue("id", "2")
-		res := httptest.NewRecorder()
-		transactionHandler(res, req)
+		sendCreditRequestToAccount(1000, 2)
+		sendCreditRequestToAccount(500, 2)
 
 		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
 
@@ -87,10 +84,21 @@ func TestMain(t *testing.T) {
 		row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
 
 		got := account.Balance
-		want := 1000
+		want := 1500
 
 		if got != want {
 			t.Errorf("Got a balance of %d, wants %d", got, want)
 		}
 	})
+}
+
+func sendCreditRequestToAccount(amount, id int) {
+	jsonStr := []byte(fmt.Sprintf(`{"valor": %d}`, amount))
+	body := bytes.NewBuffer(jsonStr)
+	req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
+
+	idStr := strconv.Itoa(id)
+	req.SetPathValue("id", idStr)
+	res := httptest.NewRecorder()
+	transactionHandler(res, req)
 }

@@ -74,7 +74,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close(context.Background())
 
-	_, err = conn.Exec(context.Background(), "UPDATE accounts SET balance = $1 WHERE id = $2", valor, id)
+	_, err = conn.Exec(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2", valor, id)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to update balance: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
