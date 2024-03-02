@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"testing"
@@ -67,6 +69,28 @@ func TestMain(t *testing.T) {
 
 		if got != want {
 			t.Errorf("Got %d accounts, wants %d", got, want)
+		}
+	})
+
+	t.Run("POST /clientes/{id}/transacoes with credit type should update the balance", func(t *testing.T) {
+		seedDB()
+		jsonStr := []byte(`{"valor": 1000}`)
+		body := bytes.NewBuffer(jsonStr)
+		req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
+		req.SetPathValue("id", "2")
+		res := httptest.NewRecorder()
+		transactionHandler(res, req)
+
+		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
+
+		var account Account
+		row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
+
+		got := account.Balance
+		want := 1000
+
+		if got != want {
+			t.Errorf("Got a balance of %d, wants %d", got, want)
 		}
 	})
 }
