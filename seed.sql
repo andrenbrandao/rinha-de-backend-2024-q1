@@ -16,3 +16,13 @@ VALUES
   ('Jack Sparrow', 10000*100),
   ('Bruce Wayne', 100000*100),
   ('Scarlett Johansson', 5000*100);
+
+-- Create transactions
+DROP TABLE IF EXISTS transactions;
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id SERIAL NOT NULL,
+  amount INTEGER NOT NULL,
+  description VARCHAR NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);

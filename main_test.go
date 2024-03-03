@@ -82,7 +82,11 @@ func TestMain(t *testing.T) {
 
 		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
 		var account Account
-		row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
+		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
+		if err != nil {
+			t.Errorf("Unable to get account: %v\n", err)
+			return
+		}
 
 		got := account.Balance
 		want := 1500
@@ -112,10 +116,30 @@ func TestMain(t *testing.T) {
 			t.Errorf("Got a balance of %d, wants %d", got, want)
 		}
 	})
+
+	t.Run("POST /clientes/{id}/transacoes inserts the transaction into the database", func(t *testing.T) {
+		seedDB()
+		sendCreditRequestToAccount(500, 2)
+
+		row := conn.QueryRow(context.Background(), "SELECT * FROM transactions LIMIT 1;")
+		var transaction Transaction
+		err := row.Scan(&transaction.Id, &transaction.Amount, &transaction.Description, &transaction.CreatedAt)
+		if err != nil {
+			t.Errorf("Unable to get transaction: %v\n", err)
+			return
+		}
+
+		got := transaction
+		want := Transaction{Amount: 500, Description: "New description."}
+
+		if got.Amount != want.Amount && got.Description != want.Description {
+			t.Errorf("Got %v, want %v", got, want)
+		}
+	})
 }
 
 func sendCreditRequestToAccount(amount, id int) *http.Response {
-	jsonStr := []byte(fmt.Sprintf(`{"valor": %d}`, amount))
+	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "descricao": "New description"}`, amount))
 	body := bytes.NewBuffer(jsonStr)
 	req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
 

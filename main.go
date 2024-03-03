@@ -10,14 +10,22 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Account struct {
-	Id           int    `json:"id"`
-	Name         string `json:"name"`
-	Balance      int    `json:"balance"`
-	BalanceLimit int    `json:"balance_limit"`
-	CreatedAt    string `json:"created_at"`
+	Id           int                `json:"id"`
+	Name         string             `json:"name"`
+	Balance      int                `json:"balance"`
+	BalanceLimit int                `json:"balance_limit"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type Transaction struct {
+	Id          int                `json:"id"`
+	Amount      int                `json:"amount"`
+	Description string             `json:"description"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 func seedDB() {
@@ -46,7 +54,8 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 type TransactionRequestBody struct {
-	Valor int `json:"valor"`
+	Valor     int    `json:"valor"`
+	Descricao string `json:"descricao"`
 }
 
 type TransactionResponseBody struct {
@@ -72,7 +81,8 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	valor := reqBodyDTO.Valor
+	amount := reqBodyDTO.Valor
+	description := reqBodyDTO.Descricao
 
 	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:5433/test-db")
 	if err != nil {
@@ -82,19 +92,39 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close(context.Background())
 
-	row := conn.QueryRow(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit", valor, id)
-	var account Account
-	err = row.Scan(&account.Balance, &account.BalanceLimit)
+	// wrap queries in a database transaction
+	err = pgx.BeginFunc(context.Background(), conn, func(tx pgx.Tx) error {
+		// update account's balance
+		row := tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, id)
+		var account Account
+		err = row.Scan(&account.Balance, &account.BalanceLimit)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to update balance: %v\n", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return err
+		}
+
+		// insert bank transaction
+		_, err = tx.Exec(context.Background(), "INSERT INTO transactions (amount, description) VALUES ($1, $2);", amount, description)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to insert transaction: %v\n", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return err
+		}
+
+		// creates http response
+		responseBody := TransactionResponseBody{Saldo: account.Balance, Limite: account.BalanceLimit}
+		w.WriteHeader(http.StatusOK)
+		b, _ := json.Marshal(responseBody)
+		w.Write(b)
+		return nil
+	})
+
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to update balance: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to initiate db transaction: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	responseBody := TransactionResponseBody{Saldo: account.Balance, Limite: account.BalanceLimit}
-	w.WriteHeader(http.StatusOK)
-	b, _ := json.Marshal(responseBody)
-	w.Write(b)
 }
 
 func extratoHandler(w http.ResponseWriter, r *http.Request) {
