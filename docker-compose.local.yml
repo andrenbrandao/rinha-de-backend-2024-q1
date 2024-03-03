@@ -1,0 +1,10 @@
+services:
+  dev-db:
+    image: postgres:16.2
+    hostname: db
+    environment:
+      - POSTGRES_PASSWORD=123
+      - POSTGRES_USER=admin
+      - POSTGRES_DB=dev-db
+    ports:
+      - "5432:5432"

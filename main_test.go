@@ -19,7 +19,7 @@ import (
 func setupSuite(tb testing.TB) func(tb testing.TB) {
 	tb.Log("Starting up test database...")
 
-	cmd := exec.Command("docker", "compose", "up", "-d")
+	cmd := exec.Command("docker", "compose", "-f", "docker-compose.tests.yml", "up", "-d")
 	err := cmd.Run()
 	if err != nil {
 		tb.Errorf("Unable to start test database: %v\n", err)
@@ -40,7 +40,7 @@ func setupSuite(tb testing.TB) func(tb testing.TB) {
 	// Return a function to teardown the test
 	return func(tb testing.TB) {
 		tb.Log("Tearing down...")
-		cmd = exec.Command("docker", "compose", "down")
+		cmd := exec.Command("docker", "compose", "-f", "docker-compose.tests.yml", "down")
 		err = cmd.Run()
 		if err != nil {
 			tb.Errorf("Error while trying to shutdown database: %v\n", err)
