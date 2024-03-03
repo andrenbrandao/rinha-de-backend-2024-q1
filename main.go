@@ -49,6 +49,11 @@ type TransactionRequestBody struct {
 	Valor int `json:"valor"`
 }
 
+type TransactionResponseBody struct {
+	Limite int `json:"limite"`
+	Saldo  int `json:"saldo"`
+}
+
 func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	fmt.Printf("Executando transação do cliente de id %s...\n", id)
@@ -77,14 +82,19 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close(context.Background())
 
-	_, err = conn.Exec(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2", valor, id)
+	row := conn.QueryRow(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit", valor, id)
+	var account Account
+	err = row.Scan(&account.Balance, &account.BalanceLimit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to update balance: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
+	responseBody := TransactionResponseBody{Saldo: account.Balance, Limite: account.BalanceLimit}
 	w.WriteHeader(http.StatusOK)
+	b, _ := json.Marshal(responseBody)
+	w.Write(b)
 }
 
 func extratoHandler(w http.ResponseWriter, r *http.Request) {

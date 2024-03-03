@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -79,7 +81,6 @@ func TestMain(t *testing.T) {
 		sendCreditRequestToAccount(500, 2)
 
 		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
-
 		var account Account
 		row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
 
@@ -90,9 +91,30 @@ func TestMain(t *testing.T) {
 			t.Errorf("Got a balance of %d, wants %d", got, want)
 		}
 	})
+
+	t.Run("POST /clientes/{id}/transacoes with credit type should return the new balance and current limit", func(t *testing.T) {
+		seedDB()
+		sendCreditRequestToAccount(1000, 2)
+		res := sendCreditRequestToAccount(500, 2)
+
+		var resBody TransactionResponseBody
+		err := json.NewDecoder(res.Body).Decode(&resBody)
+		if err != nil {
+			t.Errorf("Unable to decode response body: %v\n", err)
+			return
+		}
+		defer res.Body.Close()
+
+		got := resBody.Saldo
+		want := 1500
+
+		if got != want {
+			t.Errorf("Got a balance of %d, wants %d", got, want)
+		}
+	})
 }
 
-func sendCreditRequestToAccount(amount, id int) {
+func sendCreditRequestToAccount(amount, id int) *http.Response {
 	jsonStr := []byte(fmt.Sprintf(`{"valor": %d}`, amount))
 	body := bytes.NewBuffer(jsonStr)
 	req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
@@ -101,4 +123,5 @@ func sendCreditRequestToAccount(amount, id int) {
 	req.SetPathValue("id", idStr)
 	res := httptest.NewRecorder()
 	transactionHandler(res, req)
+	return res.Result()
 }
