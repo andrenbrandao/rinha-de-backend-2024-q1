@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -29,8 +30,14 @@ type Transaction struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+var (
+	ErrInsufficientFunds = errors.New("account does not have available limit for this debit amount")
+	PORT                 = "5433"
+	DATABASE             = "test-db"
+)
+
 func seedDB() {
-	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:5433/test-db")
+	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:"+PORT+"/"+DATABASE)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
@@ -87,7 +94,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	transactionType := reqBodyDTO.Tipo
 	description := reqBodyDTO.Descricao
 
-	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:5433/test-db")
+	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:"+PORT+"/"+DATABASE)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -105,6 +112,10 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 			account, err = executeCredit(amount, id, tx)
 		case "d":
 			account, err = executeDebit(amount, id, tx)
+			if err == ErrInsufficientFunds {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				return err
+			}
 		default:
 			fmt.Fprint(os.Stderr, "Unknown bank transaction type\n")
 			w.WriteHeader(http.StatusBadRequest)
@@ -134,8 +145,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initiate db transaction: %v\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(os.Stderr, "DB transaction failed: %v\n", err)
 		return
 	}
 }
@@ -148,9 +158,20 @@ func executeCredit(amount int, id string, tx pgx.Tx) (Account, error) {
 }
 
 func executeDebit(amount int, id string, tx pgx.Tx) (Account, error) {
+	var currAccount Account
+	row := tx.QueryRow(context.Background(), "SELECT balance, balance_limit FROM accounts WHERE id = $1;", id)
+	err := row.Scan(&currAccount.Balance, &currAccount.BalanceLimit)
+	if err != nil {
+		return currAccount, err
+	}
+
+	if currAccount.Balance-amount < -1*currAccount.BalanceLimit {
+		return currAccount, ErrInsufficientFunds
+	}
+
 	var account Account
-	row := tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, id)
-	err := row.Scan(&account.Balance, &account.BalanceLimit)
+	row = tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, id)
+	err = row.Scan(&account.Balance, &account.BalanceLimit)
 	return account, err
 }
 

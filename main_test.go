@@ -57,11 +57,6 @@ func TestMain(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unable to connect to test database: %v\n", err)
 	}
-
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS accounts;")
-	if err != nil {
-		t.Errorf("Unable to clean accounts table: %v\n", err)
-	}
 	defer conn.Close(context.Background())
 
 	t.Run("seeds the database with 5 accounts", func(t *testing.T) {
@@ -151,6 +146,42 @@ func TestMain(t *testing.T) {
 
 		got := account.Balance
 		want := -500
+
+		if got != want {
+			t.Errorf("Got a balance of %d, wants %d", got, want)
+		}
+	})
+
+	t.Run("POST /clientes/{id}/transacoes with debit type should not go over the balance limit", func(t *testing.T) {
+		seedDB()
+		res := sendDebitRequestToAccount(80000, 2)
+
+		got := res.StatusCode
+		want := http.StatusOK
+
+		if got != want {
+			t.Errorf("Got a status code of %d, wants %d", got, want)
+		}
+
+		res = sendDebitRequestToAccount(1, 2) // should not go over the limit
+
+		got = res.StatusCode
+		want = http.StatusUnprocessableEntity
+
+		if got != want {
+			t.Errorf("Got a status code of %d, wants %d", got, want)
+		}
+
+		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
+		var account Account
+		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
+		if err != nil {
+			t.Errorf("Unable to get account: %v\n", err)
+			return
+		}
+
+		got = account.Balance
+		want = -80000
 
 		if got != want {
 			t.Errorf("Got a balance of %d, wants %d", got, want)
