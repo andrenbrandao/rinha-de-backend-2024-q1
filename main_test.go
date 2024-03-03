@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -188,6 +189,33 @@ func TestMain(t *testing.T) {
 		}
 	})
 
+	t.Run("POST /clientes/{id}/transacoes concurrent requests should not let the balance go over the limit", func(t *testing.T) {
+		seedDB()
+		t.Setenv("IS_TEST_ENV", "true")
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go debitWorker(80000, 2, &wg)
+		go debitWorker(80000, 2, &wg)
+		wg.Wait()
+
+		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
+		var account Account
+		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
+		if err != nil {
+			t.Errorf("Unable to get account: %v\n", err)
+			return
+		}
+		fmt.Println("Main test account balance", account.Balance)
+
+		got := account.Balance
+		want := -80000
+
+		if got != want {
+			t.Errorf("Got a balance of %d, wants %d", got, want)
+		}
+	})
+
 	t.Run("POST /clientes/{id}/transacoes with unknown type should return bad request", func(t *testing.T) {
 		seedDB()
 		res := sendUnknownRequestToAccount(500, 2)
@@ -223,6 +251,11 @@ func sendDebitRequestToAccount(amount, id int) *http.Response {
 	res := httptest.NewRecorder()
 	transactionHandler(res, req)
 	return res.Result()
+}
+
+func debitWorker(amount int, id int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	sendDebitRequestToAccount(amount, id)
 }
 
 func sendUnknownRequestToAccount(amount, id int) *http.Response {

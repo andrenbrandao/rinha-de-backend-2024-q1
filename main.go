@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -159,10 +160,26 @@ func executeCredit(amount int, id string, tx pgx.Tx) (Account, error) {
 
 func executeDebit(amount int, id string, tx pgx.Tx) (Account, error) {
 	var currAccount Account
-	row := tx.QueryRow(context.Background(), "SELECT balance, balance_limit FROM accounts WHERE id = $1;", id)
+	row := tx.QueryRow(context.Background(), "SELECT balance, balance_limit FROM accounts WHERE id = $1 FOR UPDATE;", id)
 	err := row.Scan(&currAccount.Balance, &currAccount.BalanceLimit)
 	if err != nil {
 		return currAccount, err
+	}
+
+	/*
+		    HANDLING CONCURRENCY
+
+			  - request A has to wait here until request B reaches this part to simulate the concurrency issue
+			  - method A will run on the main test thread and will wait for the B execution
+			  - method B will be a goroutine, and will wait on this part by using sleep
+			  - after that, both will execute this second section and have read the same balance
+
+	*/
+
+	// wait for the other thread to reach
+	// have to find a better way to test it
+	if os.Getenv("IS_TEST_ENV") == "true" {
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	if currAccount.Balance-amount < -1*currAccount.BalanceLimit {
