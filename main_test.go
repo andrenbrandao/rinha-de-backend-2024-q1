@@ -123,16 +123,16 @@ func TestMain(t *testing.T) {
 
 		row := conn.QueryRow(context.Background(), "SELECT * FROM transactions LIMIT 1;")
 		var transaction Transaction
-		err := row.Scan(&transaction.Id, &transaction.Amount, &transaction.Description, &transaction.CreatedAt)
+		err := row.Scan(&transaction.Id, &transaction.Amount, &transaction.Type, &transaction.Description, &transaction.CreatedAt)
 		if err != nil {
 			t.Errorf("Unable to get transaction: %v\n", err)
 			return
 		}
 
 		got := transaction
-		want := Transaction{Amount: 500, Description: "New description."}
+		want := Transaction{Amount: 500, Type: "c", Description: "New description."}
 
-		if got.Amount != want.Amount && got.Description != want.Description {
+		if got.Amount != want.Amount && got.Type != want.Type && got.Description != want.Description {
 			t.Errorf("Got %v, want %v", got, want)
 		}
 	})

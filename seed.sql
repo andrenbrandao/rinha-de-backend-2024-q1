@@ -23,6 +23,7 @@ DROP TABLE IF EXISTS transactions;
 CREATE TABLE IF NOT EXISTS transactions (
   id SERIAL NOT NULL,
   amount INTEGER NOT NULL,
+  type VARCHAR NOT NULL,
   description VARCHAR NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );

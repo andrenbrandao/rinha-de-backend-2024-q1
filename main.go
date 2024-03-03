@@ -24,6 +24,7 @@ type Account struct {
 type Transaction struct {
 	Id          int                `json:"id"`
 	Amount      int                `json:"amount"`
+	Type        string             `json:"type"`
 	Description string             `json:"description"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
@@ -83,6 +84,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	amount := reqBodyDTO.Valor
+	transactionType := reqBodyDTO.Tipo
 	description := reqBodyDTO.Descricao
 
 	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:5433/test-db")
@@ -98,7 +100,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		// update account's balance
 		var account Account
 
-		switch reqBodyDTO.Tipo {
+		switch transactionType {
 		case "c":
 			account, err = executeCredit(amount, id, tx)
 		case "d":
@@ -116,7 +118,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// insert bank transaction
-		_, err = tx.Exec(context.Background(), "INSERT INTO transactions (amount, description) VALUES ($1, $2);", amount, description)
+		_, err = tx.Exec(context.Background(), "INSERT INTO transactions (amount, type,  description) VALUES ($1, $2, $3);", amount, transactionType, description)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to insert transaction: %v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
