@@ -136,10 +136,66 @@ func TestMain(t *testing.T) {
 			t.Errorf("Got %v, want %v", got, want)
 		}
 	})
+
+	t.Run("POST /clientes/{id}/transacoes with debit type should decrement the current balance", func(t *testing.T) {
+		seedDB()
+		sendDebitRequestToAccount(500, 2)
+
+		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
+		var account Account
+		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
+		if err != nil {
+			t.Errorf("Unable to get account: %v\n", err)
+			return
+		}
+
+		got := account.Balance
+		want := -500
+
+		if got != want {
+			t.Errorf("Got a balance of %d, wants %d", got, want)
+		}
+	})
+
+	t.Run("POST /clientes/{id}/transacoes with unknown type should return bad request", func(t *testing.T) {
+		seedDB()
+		res := sendUnknownRequestToAccount(500, 2)
+
+		got := res.StatusCode
+		want := http.StatusBadRequest
+
+		if got != want {
+			t.Errorf("Got status %d, wants %d", got, want)
+		}
+	})
 }
 
 func sendCreditRequestToAccount(amount, id int) *http.Response {
-	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "descricao": "New description"}`, amount))
+	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "tipo": "c", "descricao": "New description"}`, amount))
+	body := bytes.NewBuffer(jsonStr)
+	req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
+
+	idStr := strconv.Itoa(id)
+	req.SetPathValue("id", idStr)
+	res := httptest.NewRecorder()
+	transactionHandler(res, req)
+	return res.Result()
+}
+
+func sendDebitRequestToAccount(amount, id int) *http.Response {
+	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "tipo": "d", "descricao": "New description"}`, amount))
+	body := bytes.NewBuffer(jsonStr)
+	req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
+
+	idStr := strconv.Itoa(id)
+	req.SetPathValue("id", idStr)
+	res := httptest.NewRecorder()
+	transactionHandler(res, req)
+	return res.Result()
+}
+
+func sendUnknownRequestToAccount(amount, id int) *http.Response {
+	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "tipo": "u", "descricao": "New description"}`, amount))
 	body := bytes.NewBuffer(jsonStr)
 	req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
 

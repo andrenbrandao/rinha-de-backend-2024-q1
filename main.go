@@ -55,6 +55,7 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 
 type TransactionRequestBody struct {
 	Valor     int    `json:"valor"`
+	Tipo      string `json:"tipo"` // 'c' for credit and 'd' for debit
 	Descricao string `json:"descricao"`
 }
 
@@ -95,9 +96,19 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	// wrap queries in a database transaction
 	err = pgx.BeginFunc(context.Background(), conn, func(tx pgx.Tx) error {
 		// update account's balance
-		row := tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, id)
 		var account Account
-		err = row.Scan(&account.Balance, &account.BalanceLimit)
+
+		switch reqBodyDTO.Tipo {
+		case "c":
+			account, err = executeCredit(amount, id, tx)
+		case "d":
+			account, err = executeDebit(amount, id, tx)
+		default:
+			fmt.Fprint(os.Stderr, "Unknown bank transaction type\n")
+			w.WriteHeader(http.StatusBadRequest)
+			return err
+		}
+
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to update balance: %v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -125,6 +136,20 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+}
+
+func executeCredit(amount int, id string, tx pgx.Tx) (Account, error) {
+	var account Account
+	row := tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, id)
+	err := row.Scan(&account.Balance, &account.BalanceLimit)
+	return account, err
+}
+
+func executeDebit(amount int, id string, tx pgx.Tx) (Account, error) {
+	var account Account
+	row := tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, id)
+	err := row.Scan(&account.Balance, &account.BalanceLimit)
+	return account, err
 }
 
 func extratoHandler(w http.ResponseWriter, r *http.Request) {
