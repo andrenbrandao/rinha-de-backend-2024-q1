@@ -33,12 +33,14 @@ type Transaction struct {
 
 var (
 	ErrInsufficientFunds = errors.New("account does not have available limit for this debit amount")
-	PORT                 = "5433"
-	DATABASE             = "test-db"
+	DB_USER              = "admin"
+	DB_PASS              = "123"
+	DB_PORT              = "5432"
+	DB_NAME              = "dev-db"
 )
 
 func seedDB() {
-	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:"+PORT+"/"+DATABASE)
+	conn, err := pgx.Connect(context.Background(), "postgres://"+DB_USER+":"+DB_PASS+"@localhost:"+DB_PORT+"/"+DB_NAME)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
@@ -95,7 +97,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	transactionType := reqBodyDTO.Tipo
 	description := reqBodyDTO.Descricao
 
-	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:"+PORT+"/"+DATABASE)
+	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:"+DB_PORT+"/"+DB_NAME)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)

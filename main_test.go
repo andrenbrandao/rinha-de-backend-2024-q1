@@ -54,7 +54,10 @@ func TestMain(t *testing.T) {
 	tearDownSuite := setupSuite(t)
 	defer tearDownSuite(t)
 
-	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:5433/test-db")
+	DB_PORT = "5433"
+	DB_NAME = "test-db"
+
+	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:"+DB_PORT+"/"+DB_NAME)
 	if err != nil {
 		t.Errorf("Unable to connect to test database: %v\n", err)
 	}
@@ -206,7 +209,6 @@ func TestMain(t *testing.T) {
 			t.Errorf("Unable to get account: %v\n", err)
 			return
 		}
-		fmt.Println("Main test account balance", account.Balance)
 
 		got := account.Balance
 		want := -80000
