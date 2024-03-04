@@ -237,6 +237,29 @@ func TestMain(t *testing.T) {
 		}
 	})
 
+	t.Run("POST /clientes/{id}/transacoes should return 400 if amount is not a positive integer", func(t *testing.T) {
+		seedDB(ConnPool)
+
+		amountTests := []string{"-1", "0", "1.2"}
+		for _, amount := range amountTests {
+			jsonStr := []byte(fmt.Sprintf(`{"valor": %s, "tipo": "d", "descricao": "New description"}`, amount))
+			body := bytes.NewBuffer(jsonStr)
+			req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
+
+			req.SetPathValue("id", "2")
+			res := httptest.NewRecorder()
+			transactionHandler(res, req)
+			r := res.Result()
+
+			got := r.StatusCode
+			want := http.StatusBadRequest
+
+			if got != want {
+				t.Errorf("Transaction amount: %s. Got %d, want %d", amount, got, want)
+			}
+		}
+	})
+
 	t.Run("GET /clientes/{id}/extrato should return the current balance, limit and date of activity statement", func(t *testing.T) {
 		seedDB(ConnPool)
 

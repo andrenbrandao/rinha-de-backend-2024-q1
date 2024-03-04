@@ -104,6 +104,13 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	transactionType := reqBodyDTO.Tipo
 	description := reqBodyDTO.Descricao
 
+	// validations
+	if amount <= 0 {
+		fmt.Fprintf(os.Stderr, "Amount needs to be a positive integer")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	// wrap queries in a database transaction
 	err = pgx.BeginFunc(context.Background(), ConnPool, func(tx pgx.Tx) error {
 		// update account's balance
