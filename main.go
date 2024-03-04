@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Account struct {
@@ -38,27 +39,30 @@ var (
 	DB_PASS              = "123"
 	DB_PORT              = "5432"
 	DB_NAME              = "dev-db"
+	ConnPool             *pgxpool.Pool // shouldn't be global, better to use dependency injection. However, decided to do this way for this challenge.
 )
 
-func seedDB() {
-	conn, err := pgx.Connect(context.Background(), "postgres://"+DB_USER+":"+DB_PASS+"@localhost:"+DB_PORT+"/"+DB_NAME)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
-	}
-	defer conn.Close(context.Background())
-
+func seedDB(pool *pgxpool.Pool) {
 	seedSql, err := os.ReadFile("seed.sql")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error while trying to read seed.sql: %v\n", err)
 		os.Exit(1)
 	}
 
-	_, err = conn.Exec(context.Background(), string(seedSql))
+	_, err = pool.Exec(context.Background(), string(seedSql))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to seed database: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func connectDB(databaseURL string) *pgxpool.Pool {
+	pool, err := pgxpool.New(context.Background(), databaseURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to create connection pool to database: %v\n", err)
+		os.Exit(1)
+	}
+	return pool
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
@@ -98,16 +102,8 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	transactionType := reqBodyDTO.Tipo
 	description := reqBodyDTO.Descricao
 
-	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:"+DB_PORT+"/"+DB_NAME)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	defer conn.Close(context.Background())
-
 	// wrap queries in a database transaction
-	err = pgx.BeginFunc(context.Background(), conn, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(context.Background(), ConnPool, func(tx pgx.Tx) error {
 		// update account's balance
 		var account Account
 
@@ -217,15 +213,7 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 	accountId := r.PathValue("id")
 	fmt.Printf("Reading activity statement of client with id %s...\n", accountId)
 
-	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:"+DB_PORT+"/"+DB_NAME)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	defer conn.Close(context.Background())
-
-	rows, err := conn.Query(context.Background(), `
+	rows, err := ConnPool.Query(context.Background(), `
     SELECT a.balance, a.balance_limit, t.amount, t.type, t.description, t.created_at
     FROM accounts a
     INNER JOIN transactions t ON t.account_id = a.id
@@ -266,13 +254,15 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	const PORT = "9999"
 	fmt.Println("Starting up server...")
-	seedDB()
+	ConnPool = connectDB("postgres://" + DB_USER + ":" + DB_PASS + "@localhost:" + DB_PORT + "/" + DB_NAME) // sets global pool variable
+	seedDB(ConnPool)
 
 	http.HandleFunc("GET /health", healthHandler)
 	http.HandleFunc("POST /clientes/{id}/transacoes", transactionHandler)
 	http.HandleFunc("GET /clientes/{id}/extrato", activityStatementHandler)
 
-	fmt.Println("Listening to requests on port 8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	fmt.Println("Listening to requests on port " + PORT)
+	log.Fatal(http.ListenAndServe(":"+PORT, nil))
 }

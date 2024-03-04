@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"sync"
 	"testing"
-
-	"github.com/jackc/pgx/v5"
 )
 
 // You can use testing.T, if you want to test the code without benchmarking
@@ -57,16 +55,13 @@ func TestMain(t *testing.T) {
 	DB_PORT = "5433"
 	DB_NAME = "test-db"
 
-	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:"+DB_PORT+"/"+DB_NAME)
-	if err != nil {
-		t.Errorf("Unable to connect to test database: %v\n", err)
-	}
-	defer conn.Close(context.Background())
+	ConnPool = connectDB("postgres://admin:123@localhost:" + DB_PORT + "/" + DB_NAME)
+	defer ConnPool.Close()
 
 	t.Run("seeds the database with 5 accounts", func(t *testing.T) {
-		seedDB()
+		seedDB(ConnPool)
 		var got int
-		conn.QueryRow(context.Background(), "SELECT COUNT(*) FROM accounts").Scan(&got)
+		ConnPool.QueryRow(context.Background(), "SELECT COUNT(*) FROM accounts").Scan(&got)
 		want := 5
 
 		if got != want {
@@ -75,11 +70,11 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("POST /clientes/{id}/transacoes with credit type should update the balance", func(t *testing.T) {
-		seedDB()
+		seedDB(ConnPool)
 		sendCreditRequestToAccount(1000, 2)
 		sendCreditRequestToAccount(500, 2)
 
-		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
+		row := ConnPool.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
 		var account Account
 		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
 		if err != nil {
@@ -96,7 +91,7 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("POST /clientes/{id}/transacoes with credit type should return the new balance and current limit", func(t *testing.T) {
-		seedDB()
+		seedDB(ConnPool)
 		sendCreditRequestToAccount(1000, 2)
 		res := sendCreditRequestToAccount(500, 2)
 
@@ -117,10 +112,10 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("POST /clientes/{id}/transacoes inserts the transaction into the database", func(t *testing.T) {
-		seedDB()
+		seedDB(ConnPool)
 		sendCreditRequestToAccount(500, 2)
 
-		row := conn.QueryRow(context.Background(), "SELECT amount, type, description FROM transactions LIMIT 1;")
+		row := ConnPool.QueryRow(context.Background(), "SELECT amount, type, description FROM transactions LIMIT 1;")
 		var transaction Transaction
 		err := row.Scan(&transaction.Amount, &transaction.Type, &transaction.Description)
 		if err != nil {
@@ -137,10 +132,10 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("POST /clientes/{id}/transacoes with debit type should decrement the current balance", func(t *testing.T) {
-		seedDB()
+		seedDB(ConnPool)
 		sendDebitRequestToAccount(500, 2)
 
-		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
+		row := ConnPool.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
 		var account Account
 		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
 		if err != nil {
@@ -157,7 +152,7 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("POST /clientes/{id}/transacoes with debit type should not go over the balance limit", func(t *testing.T) {
-		seedDB()
+		seedDB(ConnPool)
 		res := sendDebitRequestToAccount(80000, 2)
 
 		got := res.StatusCode
@@ -176,7 +171,7 @@ func TestMain(t *testing.T) {
 			t.Errorf("Got a status code of %d, wants %d", got, want)
 		}
 
-		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
+		row := ConnPool.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
 		var account Account
 		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
 		if err != nil {
@@ -193,7 +188,7 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("POST /clientes/{id}/transacoes concurrent requests should not let the balance go over the limit", func(t *testing.T) {
-		seedDB()
+		seedDB(ConnPool)
 		t.Setenv("IS_TEST_ENV", "true")
 
 		var wg sync.WaitGroup
@@ -202,7 +197,7 @@ func TestMain(t *testing.T) {
 		go debitWorker(80000, 2, &wg)
 		wg.Wait()
 
-		row := conn.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
+		row := ConnPool.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
 		var account Account
 		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
 		if err != nil {
@@ -219,7 +214,7 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("POST /clientes/{id}/transacoes with unknown type should return bad request", func(t *testing.T) {
-		seedDB()
+		seedDB(ConnPool)
 		res := sendUnknownRequestToAccount(500, 2)
 
 		got := res.StatusCode
@@ -231,7 +226,7 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("GET /clientes/{id}/extrato should return the current balance, limit and date of activity statement", func(t *testing.T) {
-		seedDB()
+		seedDB(ConnPool)
 
 		// create transactions that amount to 250 of balance
 		sendCreditRequestToAccount(100, 2)
@@ -257,7 +252,7 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("GET /clientes/{id}/extrato should return the last transactions", func(t *testing.T) {
-		seedDB()
+		seedDB(ConnPool)
 
 		// create transactions that amount to 250 of balance
 		sendCreditRequestToAccount(100, 2)
