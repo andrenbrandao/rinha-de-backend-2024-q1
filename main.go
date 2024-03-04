@@ -239,7 +239,7 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var account Account
-	var lastTransactions []ActivityStatementTransaction
+	lastTransactions := []ActivityStatementTransaction{}
 
 	for rows.Next() {
 		var transaction Transaction
