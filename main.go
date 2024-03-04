@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -204,6 +205,18 @@ type ActivityStatementTransaction struct {
 	RealizadaEm string `json:"realizada_em"`
 }
 
+// had to create this after changing the query fetch accounts with transactions to LEFT JOIN
+// the Scan method raises the following error: Unable to query transactions: can't scan into dest[2]: cannot scan NULL into *int
+// using sql nullable values
+type TransactionDBModel struct {
+	Id          sql.NullString `json:"id"`
+	AccountId   sql.NullInt64  `json:"account_id"`
+	Amount      sql.NullInt64  `json:"amount"`
+	Type        sql.NullString `json:"type"`
+	Description sql.NullString `json:"description"`
+	CreatedAt   sql.NullTime   `json:"created_at"`
+}
+
 type ActivityStatementResponseBody struct {
 	Saldo             Saldo                          `json:"saldo"`
 	UltimasTransacoes []ActivityStatementTransaction `json:"ultimas_transacoes"`
@@ -216,7 +229,7 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := ConnPool.Query(context.Background(), `
     SELECT a.balance, a.balance_limit, t.amount, t.type, t.description, t.created_at
     FROM accounts a
-    INNER JOIN transactions t ON t.account_id = a.id
+    LEFT JOIN transactions t ON t.account_id = a.id
     WHERE a.id = $1
     ORDER BY t.created_at DESC
     LIMIT 10;`, accountId)
@@ -230,7 +243,7 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 	lastTransactions := []ActivityStatementTransaction{}
 
 	for rows.Next() {
-		var transaction Transaction
+		var transaction TransactionDBModel
 		err = rows.Scan(&account.Balance, &account.BalanceLimit, &transaction.Amount, &transaction.Type, &transaction.Description, &transaction.CreatedAt)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Unable to query transactions: %v\n", err)
@@ -238,8 +251,10 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		activityStatementTransaction := ActivityStatementTransaction{Valor: transaction.Amount, Tipo: transaction.Type, Descricao: transaction.Description, RealizadaEm: transaction.CreatedAt.Time.UTC().Format(time.RFC3339)}
-		lastTransactions = append(lastTransactions, activityStatementTransaction)
+		if transaction.Amount.Valid {
+			activityStatementTransaction := ActivityStatementTransaction{Valor: int(transaction.Amount.Int64), Tipo: transaction.Type.String, Descricao: transaction.Description.String, RealizadaEm: transaction.CreatedAt.Time.UTC().Format(time.RFC3339)}
+			lastTransactions = append(lastTransactions, activityStatementTransaction)
+		}
 	}
 
 	responseBody := ActivityStatementResponseBody{

@@ -250,6 +250,26 @@ func TestMain(t *testing.T) {
 			t.Errorf("Got a Total of %d and BalanceLimit of %d, wants %d and %d", got.Total, got.Limite, 250, 80000)
 		}
 	})
+	t.Run("GET /clientes/{id}/extrato should return the current balance and limit even if there were no transactions", func(t *testing.T) {
+		seedDB(ConnPool)
+
+		// get response from activity statement endpoint
+		res := sendActivityStatementRequestToAccount(2)
+
+		var resBody ActivityStatementResponseBody
+		err := json.NewDecoder(res.Body).Decode(&resBody)
+		if err != nil {
+			t.Errorf("Unable to decode response body: %v\n", err)
+			return
+		}
+		defer res.Body.Close()
+
+		got := resBody.Saldo
+
+		if got.Total != 0 || got.Limite != 80000 {
+			t.Errorf("Got a Total of %d and BalanceLimit of %d, wants %d and %d", got.Total, got.Limite, 0, 80000)
+		}
+	})
 
 	t.Run("GET /clientes/{id}/extrato should return the last transactions", func(t *testing.T) {
 		seedDB(ConnPool)
