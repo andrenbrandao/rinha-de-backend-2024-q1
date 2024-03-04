@@ -229,6 +229,32 @@ func TestMain(t *testing.T) {
 			t.Errorf("Got status %d, wants %d", got, want)
 		}
 	})
+
+	t.Run("GET /clientes/{id}/extrato should return the current balance, limit and date of activity statement", func(t *testing.T) {
+		seedDB()
+
+		// create transactions that amount to 250 of balance
+		sendCreditRequestToAccount(100, 2)
+		sendCreditRequestToAccount(200, 2)
+		sendDebitRequestToAccount(50, 2)
+
+		// get response from activity statement endpoint
+		res := sendActivityStatementRequestToAccount(2)
+
+		var resBody ActivityStatementResponseBody
+		err := json.NewDecoder(res.Body).Decode(&resBody)
+		if err != nil {
+			t.Errorf("Unable to decode response body: %v\n", err)
+			return
+		}
+		defer res.Body.Close()
+
+		got := resBody.Saldo
+
+		if got.Total != 250 && got.Limite != 80000 {
+			t.Errorf("Got a Total of %d and BalanceLimit of %d, wants %d and %d", got.Total, got.Limite, 250, 80000)
+		}
+	})
 }
 
 func sendCreditRequestToAccount(amount, id int) *http.Response {
@@ -269,5 +295,14 @@ func sendUnknownRequestToAccount(amount, id int) *http.Response {
 	req.SetPathValue("id", idStr)
 	res := httptest.NewRecorder()
 	transactionHandler(res, req)
+	return res.Result()
+}
+
+func sendActivityStatementRequestToAccount(id int) *http.Response {
+	req := httptest.NewRequest("GET", "/clientes/:id/extrato", nil)
+	idStr := strconv.Itoa(id)
+	req.SetPathValue("id", idStr)
+	res := httptest.NewRecorder()
+	activityStatementHandler(res, req)
 	return res.Result()
 }

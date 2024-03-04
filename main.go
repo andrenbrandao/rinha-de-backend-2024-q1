@@ -78,7 +78,7 @@ type TransactionResponseBody struct {
 
 func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	accountId := r.PathValue("id")
-	fmt.Printf("Executando transação do cliente de id %s...\n", accountId)
+	fmt.Printf("Making transaction for client of id %s...\n", accountId)
 
 	reqBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -195,24 +195,41 @@ func executeDebit(amount int, accountId string, tx pgx.Tx) (Account, error) {
 	return account, err
 }
 
-func extratoHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	fmt.Printf("Retornando extrato do cliente de id %s...\n", id)
-	w.Header().Set("Content-Type", "application/json")
+type Saldo struct {
+	Total       int    `json:"total"`
+	DataExtrato string `json:"data_extrato"`
+	Limite      int    `json:"limite"`
+}
 
-	responseBody := struct {
-		Saldo struct {
-			Total       int    `json:"total"`
-			DataExtrato string `json:"data_extrato"`
-			Limite      int    `json:"limite"`
-		} `json:"saldo"`
-	}{struct {
-		Total       int    `json:"total"`
-		DataExtrato string `json:"data_extrato"`
-		Limite      int    `json:"limite"`
-	}{Total: -9098, DataExtrato: "2024-01-17T02:34:41.217753Z", Limite: 100000}}
+type ActivityStatementResponseBody struct {
+	Saldo `json:"saldo"`
+}
+
+func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
+	accountId := r.PathValue("id")
+	fmt.Printf("Reading activity statement of client with id %s...\n", accountId)
+
+	conn, err := pgx.Connect(context.Background(), "postgres://admin:123@localhost:"+DB_PORT+"/"+DB_NAME)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer conn.Close(context.Background())
+
+	var account Account
+	row := conn.QueryRow(context.Background(), "SELECT balance, balance_limit FROM accounts WHERE id = $1;", accountId)
+	err = row.Scan(&account.Balance, &account.BalanceLimit)
+	if err != nil {
+		fmt.Fprint(os.Stderr, "Unable to get account\n")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	responseBody := ActivityStatementResponseBody{Saldo{Total: account.Balance, Limite: account.BalanceLimit, DataExtrato: time.Now().UTC().Format(time.RFC3339)}}
 
 	b, _ := json.Marshal(responseBody)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(b)
 }
@@ -223,7 +240,7 @@ func main() {
 
 	http.HandleFunc("GET /health", healthHandler)
 	http.HandleFunc("POST /clientes/{id}/transacoes", transactionHandler)
-	http.HandleFunc("GET /clientes/{id}/extrato", extratoHandler)
+	http.HandleFunc("GET /clientes/{id}/extrato", activityStatementHandler)
 
 	fmt.Println("Listening to requests on port 8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
