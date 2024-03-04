@@ -1,11 +1,13 @@
-DROP TABLE IF EXISTS accounts;
+BEGIN;
+DROP TABLE IF EXISTS accounts CASCADE;
 
 CREATE TABLE IF NOT EXISTS accounts (
   id SERIAL NOT NULL,
   name VARCHAR NOT NULL,
   balance INTEGER DEFAULT 0 NOT NULL,
   balance_limit INTEGER DEFAULT 0 NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  PRIMARY KEY(id)
 );
 
 INSERT INTO accounts
@@ -18,12 +20,19 @@ VALUES
   ('Scarlett Johansson', 5000*100);
 
 -- Create transactions
-DROP TABLE IF EXISTS transactions;
+DROP TABLE IF EXISTS transactions CASCADE;
 
 CREATE TABLE IF NOT EXISTS transactions (
   id SERIAL NOT NULL,
+  account_id INTEGER NOT NULL,
   amount INTEGER NOT NULL,
   type VARCHAR NOT NULL,
   description VARCHAR NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  PRIMARY KEY(id),
+  CONSTRAINT fk_account
+    FOREIGN KEY(account_id)
+      REFERENCES accounts(id)
+      ON DELETE CASCADE
 );
+COMMIT;

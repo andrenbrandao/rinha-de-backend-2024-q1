@@ -25,6 +25,7 @@ type Account struct {
 
 type Transaction struct {
 	Id          int                `json:"id"`
+	AccountId   int                `json:"account_id"`
 	Amount      int                `json:"amount"`
 	Type        string             `json:"type"`
 	Description string             `json:"description"`
@@ -76,8 +77,8 @@ type TransactionResponseBody struct {
 }
 
 func transactionHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	fmt.Printf("Executando transação do cliente de id %s...\n", id)
+	accountId := r.PathValue("id")
+	fmt.Printf("Executando transação do cliente de id %s...\n", accountId)
 
 	reqBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -112,9 +113,9 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 
 		switch transactionType {
 		case "c":
-			account, err = executeCredit(amount, id, tx)
+			account, err = executeCredit(amount, accountId, tx)
 		case "d":
-			account, err = executeDebit(amount, id, tx)
+			account, err = executeDebit(amount, accountId, tx)
 			if err == ErrInsufficientFunds {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 				return err
@@ -132,7 +133,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// insert bank transaction
-		_, err = tx.Exec(context.Background(), "INSERT INTO transactions (amount, type,  description) VALUES ($1, $2, $3);", amount, transactionType, description)
+		_, err = tx.Exec(context.Background(), "INSERT INTO transactions (account_id, amount, type,  description) VALUES ($1, $2, $3, $4);", accountId, amount, transactionType, description)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to insert transaction: %v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -153,16 +154,16 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func executeCredit(amount int, id string, tx pgx.Tx) (Account, error) {
+func executeCredit(amount int, accountId string, tx pgx.Tx) (Account, error) {
 	var account Account
-	row := tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, id)
+	row := tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
 	err := row.Scan(&account.Balance, &account.BalanceLimit)
 	return account, err
 }
 
-func executeDebit(amount int, id string, tx pgx.Tx) (Account, error) {
+func executeDebit(amount int, accountId string, tx pgx.Tx) (Account, error) {
 	var currAccount Account
-	row := tx.QueryRow(context.Background(), "SELECT balance, balance_limit FROM accounts WHERE id = $1 FOR UPDATE;", id)
+	row := tx.QueryRow(context.Background(), "SELECT balance, balance_limit FROM accounts WHERE id = $1 FOR UPDATE;", accountId)
 	err := row.Scan(&currAccount.Balance, &currAccount.BalanceLimit)
 	if err != nil {
 		return currAccount, err
@@ -189,7 +190,7 @@ func executeDebit(amount int, id string, tx pgx.Tx) (Account, error) {
 	}
 
 	var account Account
-	row = tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, id)
+	row = tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
 	err = row.Scan(&account.Balance, &account.BalanceLimit)
 	return account, err
 }

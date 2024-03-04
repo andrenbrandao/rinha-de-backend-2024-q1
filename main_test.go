@@ -120,9 +120,9 @@ func TestMain(t *testing.T) {
 		seedDB()
 		sendCreditRequestToAccount(500, 2)
 
-		row := conn.QueryRow(context.Background(), "SELECT * FROM transactions LIMIT 1;")
+		row := conn.QueryRow(context.Background(), "SELECT amount, type, description FROM transactions LIMIT 1;")
 		var transaction Transaction
-		err := row.Scan(&transaction.Id, &transaction.Amount, &transaction.Type, &transaction.Description, &transaction.CreatedAt)
+		err := row.Scan(&transaction.Amount, &transaction.Type, &transaction.Description)
 		if err != nil {
 			t.Errorf("Unable to get transaction: %v\n", err)
 			return
