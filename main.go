@@ -201,8 +201,16 @@ type Saldo struct {
 	Limite      int    `json:"limite"`
 }
 
+type ActivityStatementTransaction struct {
+	Valor       int    `json:"valor"`
+	Tipo        string `json:"tipo"`
+	Descricao   string `json:"descricao"`
+	RealizadaEm string `json:"realizada_em"`
+}
+
 type ActivityStatementResponseBody struct {
-	Saldo `json:"saldo"`
+	Saldo             Saldo                          `json:"saldo"`
+	UltimasTransacoes []ActivityStatementTransaction `json:"ultimas_transacoes"`
 }
 
 func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
@@ -217,16 +225,39 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close(context.Background())
 
-	var account Account
-	row := conn.QueryRow(context.Background(), "SELECT balance, balance_limit FROM accounts WHERE id = $1;", accountId)
-	err = row.Scan(&account.Balance, &account.BalanceLimit)
+	rows, err := conn.Query(context.Background(), `
+    SELECT a.balance, a.balance_limit, t.amount, t.type, t.description, t.created_at
+    FROM accounts a
+    INNER JOIN transactions t ON t.account_id = a.id
+    WHERE a.id = $1
+    ORDER BY t.created_at DESC
+    LIMIT 10;`, accountId)
 	if err != nil {
-		fmt.Fprint(os.Stderr, "Unable to get account\n")
+		fmt.Fprintf(os.Stderr, "Unable to query transactions: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	responseBody := ActivityStatementResponseBody{Saldo{Total: account.Balance, Limite: account.BalanceLimit, DataExtrato: time.Now().UTC().Format(time.RFC3339)}}
+	var account Account
+	var lastTransactions []ActivityStatementTransaction
+
+	for rows.Next() {
+		var transaction Transaction
+		err = rows.Scan(&account.Balance, &account.BalanceLimit, &transaction.Amount, &transaction.Type, &transaction.Description, &transaction.CreatedAt)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to query transactions: %v\n", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		activityStatementTransaction := ActivityStatementTransaction{Valor: transaction.Amount, Tipo: transaction.Type, Descricao: transaction.Description, RealizadaEm: transaction.CreatedAt.Time.UTC().Format(time.RFC3339)}
+		lastTransactions = append(lastTransactions, activityStatementTransaction)
+	}
+
+	responseBody := ActivityStatementResponseBody{
+		Saldo:             Saldo{Total: account.Balance, Limite: account.BalanceLimit, DataExtrato: time.Now().UTC().Format(time.RFC3339)},
+		UltimasTransacoes: lastTransactions,
+	}
 
 	b, _ := json.Marshal(responseBody)
 	w.Header().Set("Content-Type", "application/json")

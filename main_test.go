@@ -255,6 +255,45 @@ func TestMain(t *testing.T) {
 			t.Errorf("Got a Total of %d and BalanceLimit of %d, wants %d and %d", got.Total, got.Limite, 250, 80000)
 		}
 	})
+
+	t.Run("GET /clientes/{id}/extrato should return the last transactions", func(t *testing.T) {
+		seedDB()
+
+		// create transactions that amount to 250 of balance
+		sendCreditRequestToAccount(100, 2)
+		sendCreditRequestToAccount(200, 2)
+		sendDebitRequestToAccount(50, 2)
+
+		// get response from activity statement endpoint
+		res := sendActivityStatementRequestToAccount(2)
+
+		gotStatus := res.StatusCode
+		wantStatus := http.StatusOK
+
+		if gotStatus != wantStatus {
+			t.Errorf("Got a status code of %d, wants %d", gotStatus, wantStatus)
+		}
+
+		var resBody ActivityStatementResponseBody
+		err := json.NewDecoder(res.Body).Decode(&resBody)
+		if err != nil {
+			t.Errorf("Unable to decode response body: %v\n", err)
+			return
+		}
+		defer res.Body.Close()
+
+		numberTransactions := len(resBody.UltimasTransacoes)
+
+		if numberTransactions != 3 {
+			t.Errorf("Got %d transactions, wants %d", numberTransactions, 3)
+		}
+
+		got := resBody.UltimasTransacoes[0]
+
+		if got.Valor != 50 && got.Tipo != "d" && got.Descricao != "New description" {
+			t.Errorf("Got last transaction with Valor %d, Tipo %s and Descricao %s, wants %d, %s and %s", got.Valor, got.Tipo, got.Descricao, 50, "d", "New description")
+		}
+	})
 }
 
 func sendCreditRequestToAccount(amount, id int) *http.Response {
