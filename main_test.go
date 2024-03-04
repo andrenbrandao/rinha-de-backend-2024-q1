@@ -225,6 +225,18 @@ func TestMain(t *testing.T) {
 		}
 	})
 
+	t.Run("POST /clientes/{id}/transacoes should return 404 if account doesnt exist", func(t *testing.T) {
+		seedDB(ConnPool)
+		res := sendDebitRequestToAccount(500, 100)
+
+		got := res.StatusCode
+		want := http.StatusNotFound
+
+		if got != want {
+			t.Errorf("Got status %d, wants %d", got, want)
+		}
+	})
+
 	t.Run("GET /clientes/{id}/extrato should return the current balance, limit and date of activity statement", func(t *testing.T) {
 		seedDB(ConnPool)
 
@@ -307,6 +319,19 @@ func TestMain(t *testing.T) {
 
 		if got.Valor != 50 && got.Tipo != "d" && got.Descricao != "New description" {
 			t.Errorf("Got last transaction with Valor %d, Tipo %s and Descricao %s, wants %d, %s and %s", got.Valor, got.Tipo, got.Descricao, 50, "d", "New description")
+		}
+	})
+
+	t.Run("GET /clientes/{id}/extrato should return 404 if account doesnt exist", func(t *testing.T) {
+		seedDB(ConnPool)
+
+		res := sendActivityStatementRequestToAccount(100)
+
+		gotStatus := res.StatusCode
+		wantStatus := http.StatusNotFound
+
+		if gotStatus != wantStatus {
+			t.Errorf("Got a status code of %d, wants %d", gotStatus, wantStatus)
 		}
 	})
 }

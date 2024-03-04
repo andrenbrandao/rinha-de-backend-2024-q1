@@ -36,6 +36,7 @@ type Transaction struct {
 
 var (
 	ErrInsufficientFunds = errors.New("account does not have available limit for this debit amount")
+	ErrNotFound          = errors.New("account not found")
 	DB_USER              = "admin"
 	DB_PASS              = "123"
 	DB_PORT              = "5432"
@@ -123,6 +124,11 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
+		if err == ErrNotFound {
+			w.WriteHeader(http.StatusNotFound)
+			return err
+		}
+
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to update balance: %v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -155,6 +161,9 @@ func executeCredit(amount int, accountId string, tx pgx.Tx) (Account, error) {
 	var account Account
 	row := tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
 	err := row.Scan(&account.Balance, &account.BalanceLimit)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return account, ErrNotFound
+	}
 	return account, err
 }
 
@@ -162,6 +171,9 @@ func executeDebit(amount int, accountId string, tx pgx.Tx) (Account, error) {
 	var currAccount Account
 	row := tx.QueryRow(context.Background(), "SELECT balance, balance_limit FROM accounts WHERE id = $1 FOR UPDATE;", accountId)
 	err := row.Scan(&currAccount.Balance, &currAccount.BalanceLimit)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return currAccount, ErrNotFound
+	}
 	if err != nil {
 		return currAccount, err
 	}
@@ -242,7 +254,14 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 	var account Account
 	lastTransactions := []ActivityStatementTransaction{}
 
-	for rows.Next() {
+	hasNextRow := rows.Next()
+	if !hasNextRow {
+		fmt.Fprintf(os.Stderr, "Account not found\n")
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	for hasNextRow {
 		var transaction TransactionDBModel
 		err = rows.Scan(&account.Balance, &account.BalanceLimit, &transaction.Amount, &transaction.Type, &transaction.Description, &transaction.CreatedAt)
 		if err != nil {
@@ -255,6 +274,8 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 			activityStatementTransaction := ActivityStatementTransaction{Valor: int(transaction.Amount.Int64), Tipo: transaction.Type.String, Descricao: transaction.Description.String, RealizadaEm: transaction.CreatedAt.Time.UTC().Format(time.RFC3339)}
 			lastTransactions = append(lastTransactions, activityStatementTransaction)
 		}
+
+		hasNextRow = rows.Next()
 	}
 
 	responseBody := ActivityStatementResponseBody{
