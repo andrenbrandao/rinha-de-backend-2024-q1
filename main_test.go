@@ -124,7 +124,7 @@ func TestMain(t *testing.T) {
 		}
 
 		got := transaction
-		want := Transaction{Amount: 500, Type: "c", Description: "New description."}
+		want := Transaction{Amount: 500, Type: "c", Description: "Desc.."}
 
 		if got.Amount != want.Amount && got.Type != want.Type && got.Description != want.Description {
 			t.Errorf("Got %v, want %v", got, want)
@@ -237,12 +237,35 @@ func TestMain(t *testing.T) {
 		}
 	})
 
+	t.Run("POST /clientes/{id}/transacoes should return 400 if description is not between 1 and 10 characters", func(t *testing.T) {
+		seedDB(ConnPool)
+
+		descriptionTests := []string{"\"\"", "\"01234567891\"", "null"}
+		for _, description := range descriptionTests {
+			jsonStr := []byte(fmt.Sprintf(`{"valor": 10, "tipo": "c", "descricao": %s}`, description))
+			body := bytes.NewBuffer(jsonStr)
+			req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
+
+			req.SetPathValue("id", "2")
+			res := httptest.NewRecorder()
+			transactionHandler(res, req)
+			r := res.Result()
+
+			got := r.StatusCode
+			want := http.StatusBadRequest
+
+			if got != want {
+				t.Errorf("Description: %s. Got %d, want %d", description, got, want)
+			}
+		}
+	})
+
 	t.Run("POST /clientes/{id}/transacoes should return 400 if amount is not a positive integer", func(t *testing.T) {
 		seedDB(ConnPool)
 
 		amountTests := []string{"-1", "0", "1.2"}
 		for _, amount := range amountTests {
-			jsonStr := []byte(fmt.Sprintf(`{"valor": %s, "tipo": "d", "descricao": "New description"}`, amount))
+			jsonStr := []byte(fmt.Sprintf(`{"valor": %s, "tipo": "d", "descricao": "Desc."}`, amount))
 			body := bytes.NewBuffer(jsonStr)
 			req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
 
@@ -340,8 +363,8 @@ func TestMain(t *testing.T) {
 
 		got := resBody.UltimasTransacoes[0]
 
-		if got.Valor != 50 && got.Tipo != "d" && got.Descricao != "New description" {
-			t.Errorf("Got last transaction with Valor %d, Tipo %s and Descricao %s, wants %d, %s and %s", got.Valor, got.Tipo, got.Descricao, 50, "d", "New description")
+		if got.Valor != 50 && got.Tipo != "d" && got.Descricao != "Desc." {
+			t.Errorf("Got last transaction with Valor %d, Tipo %s and Descricao %s, wants %d, %s and %s", got.Valor, got.Tipo, got.Descricao, 50, "d", "Desc.")
 		}
 	})
 
@@ -360,7 +383,7 @@ func TestMain(t *testing.T) {
 }
 
 func sendCreditRequestToAccount(amount, id int) *http.Response {
-	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "tipo": "c", "descricao": "New description"}`, amount))
+	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "tipo": "c", "descricao": "Desc."}`, amount))
 	body := bytes.NewBuffer(jsonStr)
 	req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
 
@@ -372,7 +395,7 @@ func sendCreditRequestToAccount(amount, id int) *http.Response {
 }
 
 func sendDebitRequestToAccount(amount, id int) *http.Response {
-	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "tipo": "d", "descricao": "New description"}`, amount))
+	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "tipo": "d", "descricao": "Desc."}`, amount))
 	body := bytes.NewBuffer(jsonStr)
 	req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
 
@@ -389,7 +412,7 @@ func debitWorker(amount int, id int, wg *sync.WaitGroup) {
 }
 
 func sendUnknownRequestToAccount(amount, id int) *http.Response {
-	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "tipo": "u", "descricao": "New description"}`, amount))
+	jsonStr := []byte(fmt.Sprintf(`{"valor": %d, "tipo": "u", "descricao": "Desc."}`, amount))
 	body := bytes.NewBuffer(jsonStr)
 	req := httptest.NewRequest("POST", "/clientes/:id/transacoes", body)
 

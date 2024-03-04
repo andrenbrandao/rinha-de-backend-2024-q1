@@ -106,7 +106,13 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 
 	// validations
 	if amount <= 0 {
-		fmt.Fprintf(os.Stderr, "Amount needs to be a positive integer")
+		fmt.Fprintf(os.Stderr, "Amount needs to be a positive integer\n")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if len(description) == 0 || len(description) > 10 {
+		fmt.Fprintf(os.Stderr, "Description needs to have length between 1 and 10\n")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
