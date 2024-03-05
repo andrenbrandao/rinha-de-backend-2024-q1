@@ -317,7 +317,9 @@ func main() {
 	DB_NAME := getEnv("DB_NAME", "rinha-db")
 
 	ConnPool = connectDB("postgres://" + DB_USER + ":" + DB_PASS + "@" + DB_HOSTNAME + ":" + DB_PORT + "/" + DB_NAME) // sets global pool variable
-	seedDB(ConnPool)
+
+	// uncomment the seed below if wants to run it locally with go run main.go
+	// seedDB(ConnPool)
 
 	http.HandleFunc("GET /health", healthHandler)
 	http.HandleFunc("POST /clientes/{id}/transacoes", transactionHandler)
