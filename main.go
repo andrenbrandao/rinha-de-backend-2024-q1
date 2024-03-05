@@ -35,9 +35,10 @@ type Transaction struct {
 }
 
 var (
-	ErrInsufficientFunds = errors.New("account does not have available limit for this debit amount")
-	ErrNotFound          = errors.New("account not found")
-	ConnPool             *pgxpool.Pool // shouldn't be global, better to use dependency injection. However, decided to do this way for this challenge.
+	ErrInsufficientFunds          = errors.New("account does not have available limit for this debit amount")
+	ErrUnknownBankTransactionType = errors.New("unknown bank transaction type")
+	ErrNotFound                   = errors.New("account not found")
+	ConnPool                      *pgxpool.Pool // shouldn't be global, better to use dependency injection. However, decided to do this way for this challenge.
 )
 
 func seedDB(pool *pgxpool.Pool) {
@@ -131,7 +132,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			fmt.Fprint(os.Stderr, "Unknown bank transaction type\n")
 			w.WriteHeader(http.StatusBadRequest)
-			return err
+			return ErrUnknownBankTransactionType
 		}
 
 		if err == ErrNotFound {
