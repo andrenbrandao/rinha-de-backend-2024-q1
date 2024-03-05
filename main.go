@@ -250,10 +250,13 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := ConnPool.Query(context.Background(), `
     SELECT a.balance, a.balance_limit, t.amount, t.type, t.description, t.created_at
     FROM accounts a
-    LEFT JOIN transactions t ON t.account_id = a.id
-    WHERE a.id = $1
-    ORDER BY t.created_at DESC
-    LIMIT 10;`, accountId)
+    LEFT JOIN LATERAL (
+      SELECT * FROM transactions t
+      WHERE t.account_id = $1
+      ORDER BY t.created_at DESC
+      LIMIT 10
+    ) t ON true
+    WHERE a.id = $1;`, accountId)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to query transactions: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -317,7 +320,6 @@ func main() {
 	DB_NAME := getEnv("DB_NAME", "rinha-db")
 
 	ConnPool = connectDB("postgres://" + DB_USER + ":" + DB_PASS + "@" + DB_HOSTNAME + ":" + DB_PORT + "/" + DB_NAME) // sets global pool variable
-
 	// uncomment the seed below if wants to run it locally with go run main.go
 	// seedDB(ConnPool)
 
