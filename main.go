@@ -307,14 +307,14 @@ func getEnv(key, fallback string) string {
 }
 
 func main() {
-	const PORT = "9999"
 	fmt.Println("Starting up server...")
 
+	PORT := getEnv("PORT", "9999")
 	DB_HOSTNAME := getEnv("DB_HOSTNAME", "localhost")
 	DB_USER := getEnv("DB_USER", "admin")
 	DB_PASS := getEnv("DB_PASS", "123")
 	DB_PORT := getEnv("DB_PORT", "5432")
-	DB_NAME := getEnv("DB_NAME", "dev-db")
+	DB_NAME := getEnv("DB_NAME", "rinha-db")
 
 	ConnPool = connectDB("postgres://" + DB_USER + ":" + DB_PASS + "@" + DB_HOSTNAME + ":" + DB_PORT + "/" + DB_NAME) // sets global pool variable
 	seedDB(ConnPool)
