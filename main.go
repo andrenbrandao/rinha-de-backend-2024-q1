@@ -114,11 +114,11 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var account Account
+
 	// wrap queries in a database transaction
 	err = pgx.BeginFunc(ctx, ConnPool, func(tx pgx.Tx) error {
 		// update account's balance
-		var account Account
-
 		switch transactionType {
 		case "c":
 			account, err = executeCredit(amount, accountId, tx, ctx)
@@ -153,11 +153,6 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
-		// creates http response
-		responseBody := TransactionResponseBody{Saldo: account.Balance, Limite: account.BalanceLimit}
-		w.WriteHeader(http.StatusOK)
-		b, _ := json.Marshal(responseBody)
-		w.Write(b)
 		return nil
 	})
 
@@ -165,6 +160,12 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(os.Stderr, "DB transaction failed: %v\n", err)
 		return
 	}
+
+	// creates http response
+	responseBody := TransactionResponseBody{Saldo: account.Balance, Limite: account.BalanceLimit}
+	w.WriteHeader(http.StatusOK)
+	b, _ := json.Marshal(responseBody)
+	w.Write(b)
 }
 
 func executeCredit(amount int, accountId string, tx pgx.Tx, ctx context.Context) (Account, error) {
