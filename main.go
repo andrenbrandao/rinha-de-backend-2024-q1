@@ -81,6 +81,7 @@ type TransactionResponseBody struct {
 func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	accountId := r.PathValue("id")
 	fmt.Printf("Making transaction for client of id %s...\n", accountId)
+	ctx := r.Context()
 
 	reqBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -114,15 +115,15 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// wrap queries in a database transaction
-	err = pgx.BeginFunc(context.Background(), ConnPool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, ConnPool, func(tx pgx.Tx) error {
 		// update account's balance
 		var account Account
 
 		switch transactionType {
 		case "c":
-			account, err = executeCredit(amount, accountId, tx)
+			account, err = executeCredit(amount, accountId, tx, ctx)
 		case "d":
-			account, err = executeDebit(amount, accountId, tx)
+			account, err = executeDebit(amount, accountId, tx, ctx)
 			if err == ErrInsufficientFunds {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 				return err
@@ -145,7 +146,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// insert bank transaction
-		_, err = tx.Exec(context.Background(), "INSERT INTO transactions (account_id, amount, type,  description) VALUES ($1, $2, $3, $4);", accountId, amount, transactionType, description)
+		_, err = tx.Exec(ctx, "INSERT INTO transactions (account_id, amount, type,  description) VALUES ($1, $2, $3, $4);", accountId, amount, transactionType, description)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to insert transaction: %v\n", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -166,9 +167,9 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func executeCredit(amount int, accountId string, tx pgx.Tx) (Account, error) {
+func executeCredit(amount int, accountId string, tx pgx.Tx, ctx context.Context) (Account, error) {
 	var account Account
-	row := tx.QueryRow(context.Background(), "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
+	row := tx.QueryRow(ctx, "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
 	err := row.Scan(&account.Balance, &account.BalanceLimit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return account, ErrNotFound
@@ -176,9 +177,9 @@ func executeCredit(amount int, accountId string, tx pgx.Tx) (Account, error) {
 	return account, err
 }
 
-func executeDebit(amount int, accountId string, tx pgx.Tx) (Account, error) {
+func executeDebit(amount int, accountId string, tx pgx.Tx, ctx context.Context) (Account, error) {
 	var currAccount Account
-	row := tx.QueryRow(context.Background(), "SELECT balance, balance_limit FROM accounts WHERE id = $1 FOR UPDATE;", accountId)
+	row := tx.QueryRow(ctx, "SELECT balance, balance_limit FROM accounts WHERE id = $1 FOR UPDATE;", accountId)
 	err := row.Scan(&currAccount.Balance, &currAccount.BalanceLimit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return currAccount, ErrNotFound
@@ -190,11 +191,12 @@ func executeDebit(amount int, accountId string, tx pgx.Tx) (Account, error) {
 	/*
 		    HANDLING CONCURRENCY
 
-			  - request A has to wait here until request B reaches this part to simulate the concurrency issue
-			  - method A will run on the main test thread and will wait for the B execution
-			  - method B will be a goroutine, and will wait on this part by using sleep
-			  - after that, both will execute this second section and have read the same balance
+			  How to test: request A has to wait here until request B reaches this part to simulate the concurrency issue
 
+			  The problem:
+			    - method A will run on the main test thread and will wait for the B execution
+				  - method B will be a goroutine, and will wait on this part by using sleep
+			    - after that, both will execute this second section and have read the same balance
 	*/
 
 	// wait for the other thread to reach
@@ -246,8 +248,9 @@ type ActivityStatementResponseBody struct {
 func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 	accountId := r.PathValue("id")
 	fmt.Printf("Reading activity statement of client with id %s...\n", accountId)
+	ctx := r.Context()
 
-	rows, err := ConnPool.Query(context.Background(), `
+	rows, err := ConnPool.Query(ctx, `
     SELECT a.balance, a.balance_limit, t.amount, t.type, t.description, t.created_at
     FROM accounts a
     LEFT JOIN LATERAL (
