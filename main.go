@@ -37,10 +37,6 @@ type Transaction struct {
 var (
 	ErrInsufficientFunds = errors.New("account does not have available limit for this debit amount")
 	ErrNotFound          = errors.New("account not found")
-	DB_USER              = "admin"
-	DB_PASS              = "123"
-	DB_PORT              = "5432"
-	DB_NAME              = "dev-db"
 	ConnPool             *pgxpool.Pool // shouldn't be global, better to use dependency injection. However, decided to do this way for this challenge.
 )
 
@@ -302,10 +298,25 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(b)
 }
 
+func getEnv(key, fallback string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists {
+		value = fallback
+	}
+	return value
+}
+
 func main() {
 	const PORT = "9999"
 	fmt.Println("Starting up server...")
-	ConnPool = connectDB("postgres://" + DB_USER + ":" + DB_PASS + "@localhost:" + DB_PORT + "/" + DB_NAME) // sets global pool variable
+
+	DB_HOSTNAME := getEnv("DB_HOSTNAME", "localhost")
+	DB_USER := getEnv("DB_USER", "admin")
+	DB_PASS := getEnv("DB_PASS", "123")
+	DB_PORT := getEnv("DB_PORT", "5432")
+	DB_NAME := getEnv("DB_NAME", "dev-db")
+
+	ConnPool = connectDB("postgres://" + DB_USER + ":" + DB_PASS + "@" + DB_HOSTNAME + ":" + DB_PORT + "/" + DB_NAME) // sets global pool variable
 	seedDB(ConnPool)
 
 	http.HandleFunc("GET /health", healthHandler)

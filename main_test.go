@@ -52,10 +52,7 @@ func TestMain(t *testing.T) {
 	tearDownSuite := setupSuite(t)
 	defer tearDownSuite(t)
 
-	DB_PORT = "5433"
-	DB_NAME = "test-db"
-
-	ConnPool = connectDB("postgres://admin:123@localhost:" + DB_PORT + "/" + DB_NAME)
+	ConnPool = connectDB("postgres://admin:123@localhost:5433/test-db")
 	defer ConnPool.Close()
 
 	t.Run("seeds the database with 5 accounts", func(t *testing.T) {
