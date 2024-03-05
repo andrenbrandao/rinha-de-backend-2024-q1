@@ -15,6 +15,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/honeycombio/honeycomb-opentelemetry-go"
+	"github.com/honeycombio/otel-config-go/otelconfig"
+
+	"github.com/exaring/otelpgx"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type Account struct {
@@ -55,7 +61,15 @@ func seedDB(pool *pgxpool.Pool) {
 }
 
 func connectDB(databaseURL string) *pgxpool.Pool {
-	pool, err := pgxpool.New(context.Background(), databaseURL)
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to parse database config: %v\n", err)
+		os.Exit(1)
+	}
+
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to create connection pool to database: %v\n", err)
 		os.Exit(1)
@@ -312,8 +326,26 @@ func getEnv(key, fallback string) string {
 	return value
 }
 
+func instrumentHandler(operation string, httpHandler func(w http.ResponseWriter, _ *http.Request)) {
+	handler := http.HandlerFunc(httpHandler)
+	wrappedHandler := otelhttp.NewHandler(handler, operation)
+	http.Handle(operation, wrappedHandler)
+}
+
 func main() {
 	fmt.Println("Starting up server...")
+
+	// enable multi-span attributes
+	bsp := honeycomb.NewBaggageSpanProcessor()
+
+	// use honeycomb distro to setup OpenTelemetry SDK
+	otelShutdown, err := otelconfig.ConfigureOpenTelemetry(
+		otelconfig.WithSpanProcessor(bsp),
+	)
+	if err != nil {
+		log.Fatalf("error setting up OTel SDK - %e", err)
+	}
+	defer otelShutdown()
 
 	PORT := getEnv("PORT", "9999")
 	DB_HOSTNAME := getEnv("DB_HOSTNAME", "localhost")
@@ -326,9 +358,9 @@ func main() {
 	// uncomment the seed below if wants to run it locally with go run main.go
 	// seedDB(ConnPool)
 
-	http.HandleFunc("GET /health", healthHandler)
-	http.HandleFunc("POST /clientes/{id}/transacoes", transactionHandler)
-	http.HandleFunc("GET /clientes/{id}/extrato", activityStatementHandler)
+	instrumentHandler("GET /health", healthHandler)
+	instrumentHandler("POST /clientes/{id}/transacoes", transactionHandler)
+	instrumentHandler("GET /clientes/{id}/extrato", activityStatementHandler)
 
 	fmt.Println("Listening to requests on port " + PORT)
 	log.Fatal(http.ListenAndServe(":"+PORT, nil))
