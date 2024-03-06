@@ -19,6 +19,8 @@ VALUES
   ('Bruce Wayne', 100000*100),
   ('Scarlett Johansson', 5000*100);
 
+ALTER TABLE accounts ADD CONSTRAINT balance_over_limit_check CHECK (balance >= balance_limit * -1);
+
 -- Create transactions
 DROP TABLE IF EXISTS transactions CASCADE;
 

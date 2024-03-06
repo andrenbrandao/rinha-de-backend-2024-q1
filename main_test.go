@@ -186,7 +186,6 @@ func TestMain(t *testing.T) {
 
 	t.Run("POST /clientes/{id}/transacoes concurrent requests should not let the balance go over the limit", func(t *testing.T) {
 		seedDB(ConnPool)
-		t.Setenv("IS_TEST_ENV", "true")
 
 		var wg sync.WaitGroup
 		wg.Add(2)

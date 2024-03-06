@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -180,40 +181,17 @@ func executeCredit(amount int, accountId string, tx pgx.Tx, ctx context.Context)
 }
 
 func executeDebit(amount int, accountId string, tx pgx.Tx, ctx context.Context) (Account, error) {
-	var currAccount Account
-	row := tx.QueryRow(ctx, "SELECT balance, balance_limit FROM accounts WHERE id = $1 FOR UPDATE;", accountId)
-	err := row.Scan(&currAccount.Balance, &currAccount.BalanceLimit)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return currAccount, ErrNotFound
-	}
-	if err != nil {
-		return currAccount, err
-	}
-
-	/*
-		    HANDLING CONCURRENCY
-
-			  How to test: request A has to wait here until request B reaches this part to simulate the concurrency issue
-
-			  The problem:
-			    - method A will run on the main test thread and will wait for the B execution
-				  - method B will be a goroutine, and will wait on this part by using sleep
-			    - after that, both will execute this second section and have read the same balance
-	*/
-
-	// wait for the other thread to reach
-	// have to find a better way to test it
-	if os.Getenv("IS_TEST_ENV") == "true" {
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	if currAccount.Balance-amount < -1*currAccount.BalanceLimit {
-		return currAccount, ErrInsufficientFunds
-	}
-
 	var account Account
-	row = tx.QueryRow(ctx, "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
-	err = row.Scan(&account.Balance, &account.BalanceLimit)
+	row := tx.QueryRow(ctx, "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
+	err := row.Scan(&account.Balance, &account.BalanceLimit)
+
+	if err != nil && strings.Contains(err.Error(), "violates check constraint \"balance_over_limit_check\"") {
+		return account, ErrInsufficientFunds
+	}
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return account, ErrNotFound
+	}
 	return account, err
 }
 
