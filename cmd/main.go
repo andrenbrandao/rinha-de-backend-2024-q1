@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -150,12 +149,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func executeCredit(amount int, accountId string, tx pgx.Tx, ctx context.Context) (domain.Account, error) {
-	var account domain.Account
-	row := tx.QueryRow(ctx, "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
-	err := row.Scan(&account.Balance, &account.BalanceLimit)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return account, domain.ErrNotFound
-	}
+	account, err := repositories.UpdateBalance(accountId, amount, tx, ctx)
 	return account, err
 }
 
@@ -186,7 +180,7 @@ func executeDebit(amount int, accountId string, tx pgx.Tx, ctx context.Context) 
 		return currAccount, domain.ErrInsufficientFunds
 	}
 
-	account, err := repositories.UpdateBalance(accountId, amount, tx, ctx)
+	account, err := repositories.UpdateBalance(accountId, -1*amount, tx, ctx)
 	return account, err
 }
 

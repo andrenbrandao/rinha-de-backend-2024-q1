@@ -25,7 +25,10 @@ func GetAccount(accountId string, tx pgx.Tx, ctx context.Context) (domain.Accoun
 
 func UpdateBalance(accountId string, amount int, tx pgx.Tx, ctx context.Context) (domain.Account, error) {
 	var account domain.Account
-	row := tx.QueryRow(ctx, "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
+	row := tx.QueryRow(ctx, "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
 	err := row.Scan(&account.Balance, &account.BalanceLimit)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return account, domain.ErrNotFound
+	}
 	return account, err
 }
