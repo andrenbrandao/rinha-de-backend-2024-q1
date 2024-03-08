@@ -186,9 +186,7 @@ func executeDebit(amount int, accountId string, tx pgx.Tx, ctx context.Context) 
 		return currAccount, domain.ErrInsufficientFunds
 	}
 
-	var account domain.Account
-	row := tx.QueryRow(ctx, "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
-	err = row.Scan(&account.Balance, &account.BalanceLimit)
+	account, err := repositories.UpdateBalance(accountId, amount, tx, ctx)
 	return account, err
 }
 
