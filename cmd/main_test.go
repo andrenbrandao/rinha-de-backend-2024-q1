@@ -12,13 +12,15 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+
+	"github.com/andrenbrandao/rinha-de-backend-2024-q1/pkg/domain"
 )
 
 // You can use testing.T, if you want to test the code without benchmarking
 func setupSuite(tb testing.TB) func(tb testing.TB) {
 	tb.Log("Starting up test database...")
 
-	cmd := exec.Command("docker", "compose", "-f", "docker-compose.tests.yml", "up", "-d")
+	cmd := exec.Command("docker", "compose", "-f", "../docker-compose.tests.yml", "up", "-d")
 	err := cmd.Run()
 	if err != nil {
 		tb.Errorf("Unable to start test database: %v\n", err)
@@ -39,7 +41,7 @@ func setupSuite(tb testing.TB) func(tb testing.TB) {
 	// Return a function to teardown the test
 	return func(tb testing.TB) {
 		tb.Log("Tearing down...")
-		cmd := exec.Command("docker", "compose", "-f", "docker-compose.tests.yml", "down")
+		cmd := exec.Command("docker", "compose", "-f", "../docker-compose.tests.yml", "down")
 		err = cmd.Run()
 		if err != nil {
 			tb.Errorf("Error while trying to shutdown database: %v\n", err)
@@ -72,7 +74,7 @@ func TestMain(t *testing.T) {
 		sendCreditRequestToAccount(500, 2)
 
 		row := ConnPool.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
-		var account Account
+		var account domain.Account
 		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
 		if err != nil {
 			t.Errorf("Unable to get account: %v\n", err)
@@ -113,7 +115,7 @@ func TestMain(t *testing.T) {
 		sendCreditRequestToAccount(500, 2)
 
 		row := ConnPool.QueryRow(context.Background(), "SELECT amount, type, description FROM transactions LIMIT 1;")
-		var transaction Transaction
+		var transaction domain.Transaction
 		err := row.Scan(&transaction.Amount, &transaction.Type, &transaction.Description)
 		if err != nil {
 			t.Errorf("Unable to get transaction: %v\n", err)
@@ -121,7 +123,7 @@ func TestMain(t *testing.T) {
 		}
 
 		got := transaction
-		want := Transaction{Amount: 500, Type: "c", Description: "Desc.."}
+		want := domain.Transaction{Amount: 500, Type: "c", Description: "Desc.."}
 
 		if got.Amount != want.Amount && got.Type != want.Type && got.Description != want.Description {
 			t.Errorf("Got %v, want %v", got, want)
@@ -133,7 +135,7 @@ func TestMain(t *testing.T) {
 		sendDebitRequestToAccount(500, 2)
 
 		row := ConnPool.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
-		var account Account
+		var account domain.Account
 		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
 		if err != nil {
 			t.Errorf("Unable to get account: %v\n", err)
@@ -169,7 +171,7 @@ func TestMain(t *testing.T) {
 		}
 
 		row := ConnPool.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
-		var account Account
+		var account domain.Account
 		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
 		if err != nil {
 			t.Errorf("Unable to get account: %v\n", err)
@@ -195,7 +197,7 @@ func TestMain(t *testing.T) {
 		wg.Wait()
 
 		row := ConnPool.QueryRow(context.Background(), "SELECT * FROM accounts WHERE id = 2;")
-		var account Account
+		var account domain.Account
 		err := row.Scan(&account.Id, &account.Name, &account.Balance, &account.BalanceLimit, &account.CreatedAt)
 		if err != nil {
 			t.Errorf("Unable to get account: %v\n", err)

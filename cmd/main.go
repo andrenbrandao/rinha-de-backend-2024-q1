@@ -12,37 +12,17 @@ import (
 	"os"
 	"time"
 
+	"github.com/andrenbrandao/rinha-de-backend-2024-q1/pkg/domain"
+	"github.com/andrenbrandao/rinha-de-backend-2024-q1/pkg/repositories"
+
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Account struct {
-	Id           int                `json:"id"`
-	Name         string             `json:"name"`
-	Balance      int                `json:"balance"`
-	BalanceLimit int                `json:"balance_limit"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-}
-
-type Transaction struct {
-	Id          int                `json:"id"`
-	AccountId   int                `json:"account_id"`
-	Amount      int                `json:"amount"`
-	Type        string             `json:"type"`
-	Description string             `json:"description"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-}
-
-var (
-	ErrInsufficientFunds          = errors.New("account does not have available limit for this debit amount")
-	ErrUnknownBankTransactionType = errors.New("unknown bank transaction type")
-	ErrNotFound                   = errors.New("account not found")
-	ConnPool                      *pgxpool.Pool // shouldn't be global, better to use dependency injection. However, decided to do this way for this challenge.
-)
+var ConnPool *pgxpool.Pool // shouldn't be global, better to use dependency injection. However, decided to do this way for this challenge.
 
 func seedDB(pool *pgxpool.Pool) {
-	seedSql, err := os.ReadFile("seed.sql")
+	seedSql, err := os.ReadFile("../seed.sql")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error while trying to read seed.sql: %v\n", err)
 		os.Exit(1)
@@ -115,7 +95,7 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var account Account
+	var account domain.Account
 
 	// wrap queries in a database transaction
 	err = pgx.BeginFunc(ctx, ConnPool, func(tx pgx.Tx) error {
@@ -125,17 +105,17 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 			account, err = executeCredit(amount, accountId, tx, ctx)
 		case "d":
 			account, err = executeDebit(amount, accountId, tx, ctx)
-			if err == ErrInsufficientFunds {
+			if err == domain.ErrInsufficientFunds {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 				return err
 			}
 		default:
 			fmt.Fprint(os.Stderr, "Unknown bank transaction type\n")
 			w.WriteHeader(http.StatusBadRequest)
-			return ErrUnknownBankTransactionType
+			return domain.ErrUnknownBankTransactionType
 		}
 
-		if err == ErrNotFound {
+		if err == domain.ErrNotFound {
 			w.WriteHeader(http.StatusNotFound)
 			return err
 		}
@@ -169,23 +149,18 @@ func transactionHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(b)
 }
 
-func executeCredit(amount int, accountId string, tx pgx.Tx, ctx context.Context) (Account, error) {
-	var account Account
+func executeCredit(amount int, accountId string, tx pgx.Tx, ctx context.Context) (domain.Account, error) {
+	var account domain.Account
 	row := tx.QueryRow(ctx, "UPDATE accounts SET balance = balance + $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
 	err := row.Scan(&account.Balance, &account.BalanceLimit)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return account, ErrNotFound
+		return account, domain.ErrNotFound
 	}
 	return account, err
 }
 
-func executeDebit(amount int, accountId string, tx pgx.Tx, ctx context.Context) (Account, error) {
-	var currAccount Account
-	row := tx.QueryRow(ctx, "SELECT balance, balance_limit FROM accounts WHERE id = $1 FOR UPDATE;", accountId)
-	err := row.Scan(&currAccount.Balance, &currAccount.BalanceLimit)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return currAccount, ErrNotFound
-	}
+func executeDebit(amount int, accountId string, tx pgx.Tx, ctx context.Context) (domain.Account, error) {
+	currAccount, err := repositories.GetAccount(accountId, tx, ctx)
 	if err != nil {
 		return currAccount, err
 	}
@@ -208,11 +183,11 @@ func executeDebit(amount int, accountId string, tx pgx.Tx, ctx context.Context) 
 	}
 
 	if currAccount.Balance-amount < -1*currAccount.BalanceLimit {
-		return currAccount, ErrInsufficientFunds
+		return currAccount, domain.ErrInsufficientFunds
 	}
 
-	var account Account
-	row = tx.QueryRow(ctx, "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
+	var account domain.Account
+	row := tx.QueryRow(ctx, "UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING balance, balance_limit;", amount, accountId)
 	err = row.Scan(&account.Balance, &account.BalanceLimit)
 	return account, err
 }
@@ -268,7 +243,7 @@ func activityStatementHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var account Account
+	var account domain.Account
 	lastTransactions := []ActivityStatementTransaction{}
 
 	hasNextRow := rows.Next()
