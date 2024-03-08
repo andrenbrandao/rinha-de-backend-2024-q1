@@ -56,7 +56,7 @@ services:
       resources:
         limits:
           cpus: "0.8"
-          memory: "150MB"
+          memory: "250MB"
 
 networks:
   default:
