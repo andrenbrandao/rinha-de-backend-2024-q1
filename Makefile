@@ -1,14 +1,14 @@
 build:
-	go build -o bin/api main.go
+	go build -o bin/api cmd/main.go
 
 clean:
 	rm -rf bin/
 
 test:
-	go test -v
+	go test ./cmd/... -v
 
 run:
-	go run main.go
+	go run cmd/main.go
 
 up:
 	docker compose up
