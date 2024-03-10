@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -234,12 +233,12 @@ type ActivityStatementTransaction struct {
 // the Scan method raises the following error: Unable to query transactions: can't scan into dest[2]: cannot scan NULL into *int
 // using sql nullable values
 type TransactionDBModel struct {
-	Id          sql.NullString `json:"id"`
-	AccountId   sql.NullInt64  `json:"account_id"`
-	Amount      sql.NullInt64  `json:"amount"`
-	Type        sql.NullString `json:"type"`
-	Description sql.NullString `json:"description"`
-	CreatedAt   sql.NullTime   `json:"created_at"`
+	Id          pgtype.Int8        `json:"id"`
+	AccountId   pgtype.Int8        `json:"account_id"`
+	Amount      pgtype.Int8        `json:"amount"`
+	Type        pgtype.Text        `json:"type"`
+	Description pgtype.Text        `json:"description"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type ActivityStatementResponseBody struct {
